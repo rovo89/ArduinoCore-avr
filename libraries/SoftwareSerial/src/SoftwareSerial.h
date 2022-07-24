@@ -56,6 +56,7 @@ private:
   volatile uint8_t *_receivePortRegister;
   uint8_t _transmitBitMask;
   volatile uint8_t *_transmitPortRegister;
+  volatile uint8_t *_portModeRegister;
   volatile uint8_t *_pcint_maskreg;
   uint8_t _pcint_maskvalue;
 
@@ -67,6 +68,7 @@ private:
 
   uint16_t _buffer_overflow:1;
   uint16_t _inverse_logic:1;
+  uint16_t _half_duplex:1;
 
   // static data
   static uint8_t _receive_buffer[_SS_MAX_RX_BUFF]; 

@@ -252,7 +252,8 @@ SoftwareSerial::SoftwareSerial(uint8_t receivePin, uint8_t transmitPin, bool inv
   _rx_delay_stopbit(0),
   _tx_delay(0),
   _buffer_overflow(false),
-  _inverse_logic(inverse_logic)
+  _inverse_logic(inverse_logic),
+  _half_duplex(transmitPin == receivePin)
 {
   setTX(transmitPin);
   setRX(receivePin);
@@ -272,15 +273,19 @@ void SoftwareSerial::setTX(uint8_t tx)
   // the pin would be output low for a short while before switching to
   // output high. Now, it is input with pullup for a short while, which
   // is fine. With inverse logic, either order is fine.
-  digitalWrite(tx, _inverse_logic ? LOW : HIGH);
-  pinMode(tx, OUTPUT);
+  if (!_half_duplex) {
+    digitalWrite(tx, _inverse_logic ? LOW : HIGH);
+    pinMode(tx, OUTPUT);
+  }
   _transmitBitMask = digitalPinToBitMask(tx);
   uint8_t port = digitalPinToPort(tx);
   _transmitPortRegister = portOutputRegister(port);
+  _portModeRegister = portModeRegister(port);
 }
 
 void SoftwareSerial::setRX(uint8_t rx)
 {
+  // FIXME: Will this briefly set the pin to 0V?
   pinMode(rx, INPUT);
   if (!_inverse_logic)
     digitalWrite(rx, HIGH);  // pullup for normal logic!
@@ -424,6 +429,7 @@ size_t SoftwareSerial::write(uint8_t b)
   // critical timing sections below, which makes it a lot easier to
   // verify the cycle timings
   volatile uint8_t *reg = _transmitPortRegister;
+  volatile uint8_t *mode = _portModeRegister;
   uint8_t reg_mask = _transmitBitMask;
   uint8_t inv_mask = ~_transmitBitMask;
   uint8_t oldSREG = SREG;
@@ -434,6 +440,10 @@ size_t SoftwareSerial::write(uint8_t b)
     b = ~b;
 
   cli();  // turn off interrupts for a clean txmit
+
+  // Temporarily set pin to OUTPUT
+  if (_half_duplex)
+    *mode |= reg_mask;
 
   // Write the start bit
   if (inv)
@@ -460,6 +470,10 @@ size_t SoftwareSerial::write(uint8_t b)
     *reg &= inv_mask;
   else
     *reg |= reg_mask;
+
+  // Switch back to INPUT
+  if (_half_duplex)
+    *mode &= inv_mask;
 
   SREG = oldSREG; // turn interrupts back on
   tunedDelay(_tx_delay);
